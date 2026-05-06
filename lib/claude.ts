@@ -19,16 +19,40 @@ function grokClient(): OpenAI {
 
 const grokModel = () => process.env.GROK_MODEL || 'grok-3'
 
-// ─── Call 1: Complaint parsing + PII strip (Claude) ──────────────────────────
+// ─── Retry helper — handles 529 overloaded + transient 500s ──────────────────
+
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
+  let lastErr: unknown
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn()
+    } catch (err: unknown) {
+      lastErr = err
+      const status = (err as { status?: number })?.status
+      // Retry on overloaded (529) or server error (500/503) — not on auth/client errors
+      if (status === 529 || status === 500 || status === 503) {
+        const delay = Math.min(1000 * Math.pow(2, attempt), 8000) // 1s, 2s, 4s, 8s
+        console.warn(`[claude] attempt ${attempt + 1} failed (${status}) — retrying in ${delay}ms`)
+        await new Promise(r => setTimeout(r, delay))
+        continue
+      }
+      throw err
+    }
+  }
+  throw lastErr
+}
+
+// ─── Call 1: Complaint parsing + PII strip (Grok) ────────────────────────────
 
 export async function parseComplaint(rawText: string): Promise<ParsedComplaint> {
-  const message = await anthropicClient().messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 512,
-    system: `You are a meme data analyst. Your job is to parse user complaints into structured data for a meme generator while stripping all PII.
-
-Return a single JSON object. No markdown, no explanation — just the JSON.`,
+  const completion = await withRetry(() => grokClient().chat.completions.create({
+    model: grokModel(),
+    response_format: { type: 'json_object' },
     messages: [
+      {
+        role: 'system',
+        content: `You are a meme data analyst. Parse user complaints into structured data for a meme generator while stripping all PII. Return JSON only — no markdown, no explanation.`,
+      },
       {
         role: 'user',
         content: `Parse this complaint and return JSON:
@@ -51,9 +75,9 @@ Rules:
 Complaint: ${rawText}`,
       },
     ],
-  })
+  }))
 
-  const text = message.content[0].type === 'text' ? message.content[0].text : ''
+  const text = completion.choices[0].message.content || ''
 
   try {
     const cleaned = text.replace(/```json\n?|\n?```/g, '').trim()

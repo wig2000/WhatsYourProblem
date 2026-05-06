@@ -104,7 +104,7 @@ export async function generateIllustrationImage(prompt: string): Promise<ImageGe
       prompt: `${prompt}. Flat illustration style, clean lines, minimal background. No text, no words in the image.`,
       image_size: 'square_hd',
       num_images: 1,
-      num_inference_steps: 28,
+      // num_inference_steps not in v1.1 type — omitted
     },
   })
 

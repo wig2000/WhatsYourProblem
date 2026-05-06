@@ -15,10 +15,19 @@ const FONT_FILES: Record<FontChoice, string> = {
 }
 
 const FONT_SIZES: Record<FontChoice, number> = {
-  'bebas':      72,
-  'inter-bold': 52,
-  'caveat':     58,
-  'inter':      48,
+  'bebas':      56,
+  'inter-bold': 46,
+  'caveat':     52,
+  'inter':      42,
+}
+
+// Conservative char-width ratio per font (em units).
+// Bebas Neue / Impact are all-caps and wide — use 0.70 to avoid overflow.
+const CHAR_WIDTH_RATIO: Record<FontChoice, number> = {
+  'bebas':      0.70,
+  'inter-bold': 0.62,
+  'caveat':     0.57,
+  'inter':      0.52,
 }
 
 // Load font as base64 for embedding in SVG (Vercel-safe — no system font dependency)
@@ -72,19 +81,37 @@ function buildTextSvg(
     : GRID_POSITIONS[params.placement]
 
   const { fill, stroke } = COLOUR_HEX[colour]
-  const fontSize = FONT_SIZES[font]
   const fontBase64 = getFontBase64(font)
   const fontFamily = font === 'bebas' ? 'BebasNeue'
     : font === 'inter-bold' ? 'InterBold'
     : font === 'caveat' ? 'Caveat'
     : 'Inter'
 
-  const maxChars = Math.floor((width * 0.85) / (fontSize * 0.55))
-  const lines = wrapText(text.toUpperCase(), maxChars)
+  // Usable width depends on anchor so text doesn't escape the frame.
+  // anchor 'end': text grows left from xPx  → usable = xPx - padding
+  // anchor 'middle': centered at xPx        → usable = 2 * min(xPx, w-xPx) - padding
+  // anchor 'start': text grows right        → usable = width - xPx - padding
+  const xPx0 = pos.x * width
+  const usableWidth =
+    pos.anchor === 'end'    ? xPx0 - pos.padding
+    : pos.anchor === 'middle' ? 2 * Math.min(xPx0, width - xPx0) - pos.padding
+    : width - xPx0 - pos.padding
+
+  // Scale down until all lines fit horizontally (max 8 attempts, ~15% each step)
+  let fontSize = FONT_SIZES[font]
+  let lines: string[] = []
+  const MAX_LINES = 8
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const charsPerLine = Math.floor(usableWidth / (fontSize * CHAR_WIDTH_RATIO[font]))
+    lines = wrapText(text.toUpperCase(), Math.max(charsPerLine, 1))
+    if (lines.length <= MAX_LINES) break
+    fontSize = Math.round(fontSize * 0.85)
+  }
+
   const lineHeight = fontSize * 1.2
   const totalTextHeight = lines.length * lineHeight
 
-  const xPx = pos.x * width
+  const xPx = xPx0
   let yPx = pos.y * height
 
   // Nudge baseline/hanging positions so text stays in frame

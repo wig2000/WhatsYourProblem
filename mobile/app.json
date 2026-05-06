@@ -15,7 +15,8 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.whatsyourproblem.app"
+      "bundleIdentifier": "com.whatsyourproblem.app",
+      "googleMobileAdsAppId": "ca-app-pub-3131750897668019~9088578604"
     },
     "android": {
       "adaptiveIcon": {
@@ -35,11 +36,16 @@
       "expo-secure-store",
       [
         "expo-media-library",
-        { "photosPermission": "Allow What's Your Problem to save memes to your photo library." }
-      ]
+        {
+          "photosPermission": "Allow What's Your Problem to save memes to your photo library."
+        }
+      ],
+      "react-native-google-mobile-ads"
     ],
     "extra": {
-      "router": { "origin": false }
+      "router": {
+        "origin": false
+      }
     }
   }
 }

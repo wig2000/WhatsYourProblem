@@ -14,9 +14,16 @@ import type { GeneratedMeme, SSEEvent, MemeBrief, CompositeParams } from '@/lib/
 export const runtime = 'nodejs'
 export const maxDuration = 120
 
-function send(controller: ReadableStreamDefaultController, event: SSEEvent) {
-  const line = `data: ${JSON.stringify(event)}\n\n`
-  controller.enqueue(new TextEncoder().encode(line))
+function makeSender(controller: ReadableStreamDefaultController) {
+  let closed = false
+  return function send(event: SSEEvent) {
+    if (closed) return
+    try {
+      controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`))
+    } catch {
+      closed = true
+    }
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -47,6 +54,7 @@ export async function POST(req: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      const send = makeSender(controller)
       try {
         // ── Call 1: Parse complaint (Claude) ───────────────────────────────
         const parsed = await parseComplaint(complaint)
@@ -62,7 +70,7 @@ export async function POST(req: NextRequest) {
           consentGiven,
         }).then((id) => { complaintId = id }).catch(console.error)
 
-        send(controller, { type: 'parsed', data: parsed })
+        send({ type: 'parsed', data: parsed })
 
         // ── Call 2: Generate 5 meme briefs (Grok 3) ───────────────────────
         const briefs = await generateMemeBriefs(parsed.premise, parsed.emotionalRegister)
@@ -95,7 +103,7 @@ export async function POST(req: NextRequest) {
             captionText: brief.captionText,
           }
 
-          send(controller, { type: 'meme', index, data: meme })
+          send({ type: 'meme', index, data: meme })
         }
 
         // Text-only (index 4) — instant
@@ -167,7 +175,7 @@ export async function POST(req: NextRequest) {
             captionText: brief.captionText,
           }
 
-          send(controller, { type: 'meme', index, data: meme })
+          send({ type: 'meme', index, data: meme })
         }
 
         // All 5 tasks fire simultaneously — fast ones (text, template) resolve first
@@ -176,22 +184,22 @@ export async function POST(req: NextRequest) {
           templateTask(),
           generatedTask(surrealBrief, 0, generateSurrealImage).catch((err) => {
             console.error('[surreal] failed:', err)
-            send(controller, { type: 'error', data: { message: 'Surreal image failed', index: 0 } })
+            send({ type: 'error', data: { message: 'Surreal image failed', index: 0 } })
           }),
           generatedTask(realisticBrief, 1, generateRealisticImage).catch((err) => {
             console.error('[realistic] failed:', err)
-            send(controller, { type: 'error', data: { message: 'Realistic image failed', index: 1 } })
+            send({ type: 'error', data: { message: 'Realistic image failed', index: 1 } })
           }),
           generatedTask(illustrationBrief, 3, generateIllustrationImage).catch((err) => {
             console.error('[illustration] failed:', err)
-            send(controller, { type: 'error', data: { message: 'Illustration image failed', index: 3 } })
+            send({ type: 'error', data: { message: 'Illustration image failed', index: 3 } })
           }),
         ])
 
-        send(controller, { type: 'complete', data: { sessionId } })
+        send({ type: 'complete', data: { sessionId } })
       } catch (err) {
         console.error('[generate] fatal error:', err)
-        send(controller, {
+        send({
           type: 'error',
           data: { message: err instanceof Error ? err.message : 'Generation failed' },
         })

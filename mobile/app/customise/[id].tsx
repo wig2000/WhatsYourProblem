@@ -4,17 +4,20 @@ import {
   StyleSheet, Dimensions, ActivityIndicator, Alert,
 } from 'react-native'
 import { Image } from 'expo-image'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as Sharing from 'expo-sharing'
 import * as MediaLibrary from 'expo-media-library'
 import * as FileSystem from 'expo-file-system/legacy'
 import * as Haptics from 'expo-haptics'
 import { API_URL, shareToFinal } from '../../lib/api'
+import { T } from '../../lib/theme'
 import type { FontChoice, ColourChoice, GridPosition } from '../../lib/types'
 import { FONT_LABELS, COLOUR_HEX, GRID_ARROWS } from '../../lib/types'
 
 const W = Dimensions.get('window').width
-const PREVIEW_SIZE = W - 32
+const PREVIEW_SIZE = W - 36
 
 const FONTS: FontChoice[] = ['bebas', 'inter-bold', 'caveat', 'inter']
 const COLOURS: ColourChoice[] = ['white-stroke', 'black', 'yellow', 'red', 'teal', 'purple']
@@ -23,6 +26,7 @@ const GRID: GridPosition[] = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 type Tab = 'text' | 'style' | 'position'
 
 export default function CustomiseScreen() {
+  const insets = useSafeAreaInsets()
   const { id, url, caption: initialCaption, style } = useLocalSearchParams<{
     id: string; url: string; caption: string; style: string
   }>()
@@ -35,8 +39,8 @@ export default function CustomiseScreen() {
   const [colour, setColour] = useState<ColourChoice>('white-stroke')
   const [placement, setPlacement] = useState<GridPosition>(9)
   const [compositeUrl, setCompositeUrl] = useState(url)
-  const [shareMemeId, setShareMemeId] = useState(id)   // latest version — for sharing
-  const originalMemeId = id                             // never changes — always composite from base
+  const [shareMemeId, setShareMemeId] = useState(id)
+  const originalMemeId = id
   const [isCompositing, setIsCompositing] = useState(false)
   const [isSuggesting, setIsSuggesting] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -51,8 +55,10 @@ export default function CustomiseScreen() {
       const res = await fetch(`${API_URL}/api/composite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Always use the original meme ID so we always composite from the clean base image
-        body: JSON.stringify({ memeId: originalMemeId, font: f, colour: c, placement: p, captionText: cap }),
+        body: JSON.stringify({
+          memeId: originalMemeId,
+          font: f, colour: c, placement: p, captionText: cap,
+        }),
       })
       if (!res.ok) throw new Error('Composite failed')
       const data = await res.json() as { compositeUrl: string; memeId: string }
@@ -65,7 +71,6 @@ export default function CustomiseScreen() {
     }
   }, [originalMemeId])
 
-  // Debounce recomposite on any param change
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
@@ -88,7 +93,7 @@ export default function CustomiseScreen() {
       const data = await res.json() as { caption: string }
       setCaption(data.caption)
     } catch {
-      Alert.alert('Error', 'Could not generate a new caption.')
+      Alert.alert('Something went weird.', 'Slap it again.')
     } finally {
       setIsSuggesting(false)
     }
@@ -99,16 +104,15 @@ export default function CustomiseScreen() {
     try {
       const { status } = await MediaLibrary.requestPermissionsAsync()
       if (status !== 'granted') {
-        Alert.alert('Permission required', 'Allow photo library access to save memes.')
+        Alert.alert('Permission needed', 'Allow photo access to save memes.')
         return
       }
       const localUri = FileSystem.cacheDirectory + `meme_save_${shareMemeId}.webp`
       await FileSystem.downloadAsync(compositeUrl, localUri)
       await MediaLibrary.saveToLibraryAsync(localUri)
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-      Alert.alert('Saved!', 'Meme saved to your photo library.')
     } catch {
-      Alert.alert('Error', 'Failed to save meme.')
+      Alert.alert('Something went weird.', 'Slap it again.')
     } finally {
       setIsSaving(false)
     }
@@ -123,25 +127,40 @@ export default function CustomiseScreen() {
       if (available) {
         const localUri = FileSystem.cacheDirectory + `meme_share_${shareMemeId}.webp`
         await FileSystem.downloadAsync(compositeUrl, localUri)
-        await Sharing.shareAsync(localUri, { mimeType: 'image/webp', dialogTitle: "Share your meme" })
+        await Sharing.shareAsync(localUri, {
+          mimeType: 'image/webp',
+          dialogTitle: 'Send it to the group chat',
+        })
       }
     } catch {
-      Alert.alert('Error', 'Failed to share meme.')
+      Alert.alert('Something went weird.', 'Slap it again.')
     } finally {
       setIsSharing(false)
     }
   }
 
+  const TABS: { id: Tab; label: string }[] = [
+    { id: 'text', label: 'Caption' },
+    { id: 'style', label: 'Style' },
+    { id: 'position', label: 'Position' },
+  ]
+
   return (
     <View style={styles.root}>
-      <ScrollView contentContainerStyle={styles.inner} showsVerticalScrollIndicator={false}>
 
+      {/* Scrollable content — flex:1 so it fills space above the action bar */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.inner}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Preview */}
         <View style={styles.previewWrapper}>
           <Image source={{ uri: compositeUrl }} style={styles.preview} contentFit="cover" />
           {isCompositing && (
             <View style={styles.previewOverlay}>
-              <ActivityIndicator color="#FF6B35" size="large" />
+              <ActivityIndicator color={T.accent} size="large" />
             </View>
           )}
         </View>
@@ -149,30 +168,31 @@ export default function CustomiseScreen() {
         {/* Tab bar */}
         {!isTemplate && (
           <View style={styles.tabs}>
-            {(['text', 'style', 'position'] as Tab[]).map(tab => (
+            {TABS.map((tab) => (
               <TouchableOpacity
-                key={tab}
-                style={[styles.tab, activeTab === tab && styles.tabActive]}
-                onPress={() => setActiveTab(tab)}
+                key={tab.id}
+                style={[styles.tab, activeTab === tab.id && styles.tabActive]}
+                onPress={() => setActiveTab(tab.id)}
               >
-                <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-                  {tab === 'text' ? 'Caption' : tab === 'style' ? 'Style' : 'Position'}
+                <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]}>
+                  {tab.label}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
         )}
 
-        {/* Caption tab (always shown for template) */}
+        {/* Caption tab */}
         {(activeTab === 'text' || isTemplate) && (
           <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Caption</Text>
             <TextInput
               style={styles.captionInput}
               value={caption}
               onChangeText={setCaption}
               multiline
               placeholder="Edit your caption…"
-              placeholderTextColor="#555"
+              placeholderTextColor={T.inkSoft}
               textAlignVertical="top"
             />
             <TouchableOpacity
@@ -181,8 +201,8 @@ export default function CustomiseScreen() {
               disabled={isSuggesting}
             >
               {isSuggesting
-                ? <ActivityIndicator color="#FF6B35" size="small" />
-                : <Text style={styles.suggestText}>✨ Suggest another caption</Text>
+                ? <ActivityIndicator color={T.accent} size="small" />
+                : <Text style={styles.suggestText}>suggest another →</Text>
               }
             </TouchableOpacity>
           </View>
@@ -193,7 +213,7 @@ export default function CustomiseScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Font</Text>
             <View style={styles.fontGrid}>
-              {FONTS.map(f => (
+              {FONTS.map((f) => (
                 <TouchableOpacity
                   key={f}
                   style={[styles.fontChip, font === f && styles.fontChipActive]}
@@ -206,9 +226,9 @@ export default function CustomiseScreen() {
               ))}
             </View>
 
-            <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Text Colour</Text>
+            <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Colour</Text>
             <View style={styles.colourRow}>
-              {COLOURS.map(c => (
+              {COLOURS.map((c) => (
                 <TouchableOpacity
                   key={c}
                   style={[
@@ -227,48 +247,58 @@ export default function CustomiseScreen() {
         {activeTab === 'position' && !isTemplate && (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Text Position</Text>
-            <View style={styles.gridWrapper}>
-              <View style={styles.posGrid}>
-                {GRID.map(pos => (
-                  <TouchableOpacity
-                    key={pos}
-                    style={[styles.posCell, placement === pos && styles.posCellActive]}
-                    onPress={() => setPlacement(pos)}
-                  >
-                    <Text style={[styles.posCellText, placement === pos && styles.posCellTextActive]}>
-                      {GRID_ARROWS[pos]}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+            <View style={styles.posGrid}>
+              {GRID.map((pos) => (
+                <TouchableOpacity
+                  key={pos}
+                  style={[styles.posCell, placement === pos && styles.posCellActive]}
+                  onPress={() => setPlacement(pos)}
+                >
+                  <Text style={[styles.posCellText, placement === pos && styles.posCellTextActive]}>
+                    {GRID_ARROWS[pos]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         )}
-
-        <View style={styles.spacer} />
       </ScrollView>
 
-      {/* Sticky action bar */}
-      <View style={styles.actionBar}>
+      {/* Action bar — normal flex child, sits below ScrollView, never overlaps it */}
+      <View style={[styles.actionBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 16 }]}>
         <TouchableOpacity
-          style={[styles.actionBtn, styles.actionBtnSecondary]}
+          style={styles.saveBtn}
           onPress={handleSave}
           disabled={isSaving || isCompositing}
         >
           {isSaving
-            ? <ActivityIndicator color="#FF6B35" size="small" />
-            : <Text style={styles.actionBtnSecondaryText}>💾 Save</Text>
+            ? <ActivityIndicator color={T.accent} size="small" />
+            : <Text style={styles.saveBtnText}>↓ Save</Text>
           }
         </TouchableOpacity>
+
         <TouchableOpacity
-          style={[styles.actionBtn, styles.actionBtnPrimary]}
+          style={{ flex: 1 }}
           onPress={handleShare}
           disabled={isSharing || isCompositing}
+          activeOpacity={0.85}
         >
-          {isSharing
-            ? <ActivityIndicator color="#FFF" size="small" />
-            : <Text style={styles.actionBtnPrimaryText}>🔗 Share</Text>
-          }
+          <LinearGradient
+            colors={
+              isSharing || isCompositing
+                ? ['#3A1040', '#2A0C30', '#1E0824']
+                : ['#FF8FC2', '#FF2EC4', '#B8156A']
+            }
+            style={styles.shareBtn}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+          >
+            <View style={styles.shareBtnHighlight} />
+            {isSharing
+              ? <ActivityIndicator color="#FFF" size="small" />
+              : <Text style={styles.shareBtnText}>SHARE IT ↗</Text>
+            }
+          </LinearGradient>
         </TouchableOpacity>
       </View>
     </View>
@@ -276,15 +306,17 @@ export default function CustomiseScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0D0D0D' },
-  inner: { padding: 16, paddingBottom: 100 },
+  root: { flex: 1, backgroundColor: T.bg },
+  scroll: { flex: 1 },
+  inner: { padding: 18, paddingBottom: 8 },
+
   previewWrapper: {
     width: PREVIEW_SIZE,
     height: PREVIEW_SIZE,
-    borderRadius: 16,
+    borderRadius: T.radius.card,
     overflow: 'hidden',
     marginBottom: 20,
-    backgroundColor: '#1A1A1A',
+    backgroundColor: T.surfaceTint,
   },
   preview: { width: '100%', height: '100%' },
   previewOverlay: {
@@ -293,12 +325,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   tabs: {
     flexDirection: 'row',
-    backgroundColor: '#1A1A1A',
-    borderRadius: 12,
+    backgroundColor: T.surfaceTint,
+    borderRadius: 14,
     padding: 4,
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: T.border,
   },
   tab: {
     flex: 1,
@@ -306,55 +341,75 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 10,
   },
-  tabActive: { backgroundColor: '#FF6B35' },
-  tabText: { color: '#666', fontSize: 14, fontWeight: '600' },
-  tabTextActive: { color: '#FFF' },
+  tabActive: {
+    backgroundColor: T.accent,
+    shadowColor: T.accent,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  tabText: { color: T.inkSoft, fontSize: 13, fontWeight: '600' },
+  tabTextActive: { color: '#FFF', fontFamily: 'Anton_400Regular', letterSpacing: 0.5 },
+
   section: { marginBottom: 8 },
   sectionLabel: {
-    color: '#888',
-    fontSize: 11,
-    fontWeight: '700',
+    fontFamily: 'Courier New',
+    color: T.inkSoft,
+    fontSize: 10,
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 12,
+    marginBottom: 10,
   },
+
   captionInput: {
-    backgroundColor: '#1A1A1A',
-    borderRadius: 14,
+    backgroundColor: T.surfaceTint,
+    borderRadius: T.radius.input,
     padding: 16,
-    color: '#FFF',
+    color: T.ink,
     fontSize: 16,
     lineHeight: 24,
     minHeight: 100,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: T.border,
   },
   suggestBtn: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#FF6B35',
+    borderColor: T.accent,
     borderRadius: 12,
     paddingVertical: 12,
-    gap: 8,
   },
-  suggestText: { color: '#FF6B35', fontSize: 14, fontWeight: '600' },
+  suggestText: {
+    color: T.accent,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+
   fontGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
   },
   fontChip: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: T.border,
+    backgroundColor: T.surfaceTint,
   },
-  fontChipActive: { borderColor: '#FF6B35', backgroundColor: 'rgba(255,107,53,0.1)' },
-  fontChipText: { color: '#888', fontSize: 14, fontWeight: '600' },
-  fontChipTextActive: { color: '#FFF' },
-  colourRow: { flexDirection: 'row', gap: 14, flexWrap: 'wrap' },
+  fontChipActive: {
+    borderColor: T.accent,
+    backgroundColor: 'rgba(255,46,196,0.12)',
+  },
+  fontChipText: { color: T.inkSoft, fontSize: 14, fontWeight: '600' },
+  fontChipTextActive: { color: T.ink },
+
+  colourRow: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
   colourDot: {
     width: 36,
     height: 36,
@@ -362,8 +417,16 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'transparent',
   },
-  colourDotActive: { borderColor: '#FFF', transform: [{ scale: 1.15 }] },
-  gridWrapper: { alignItems: 'flex-start' },
+  colourDotActive: {
+    borderColor: T.accent,
+    transform: [{ scale: 1.2 }],
+    shadowColor: T.accent,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.7,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+
   posGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -375,37 +438,66 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: T.border,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: T.surfaceTint,
   },
-  posCellActive: { borderColor: '#FF6B35', backgroundColor: 'rgba(255,107,53,0.15)' },
-  posCellText: { color: '#666', fontSize: 18 },
-  posCellTextActive: { color: '#FF6B35' },
-  spacer: { height: 20 },
+  posCellActive: {
+    borderColor: T.accent,
+    backgroundColor: 'rgba(255,46,196,0.15)',
+  },
+  posCellText: { color: T.inkSoft, fontSize: 18 },
+  posCellTextActive: { color: T.accent },
+
   actionBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     flexDirection: 'row',
-    gap: 12,
-    padding: 16,
-    paddingBottom: 32,
-    backgroundColor: '#0D0D0D',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    backgroundColor: T.bg,
     borderTopWidth: 1,
-    borderTopColor: '#1A1A1A',
+    borderTopColor: T.border,
   },
-  actionBtn: {
-    flex: 1,
-    paddingVertical: 16,
+  saveBtn: {
+    width: 80,
+    height: 56,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 52,
+    backgroundColor: T.surfaceTint,
+    borderWidth: 1,
+    borderColor: T.border,
   },
-  actionBtnPrimary: { backgroundColor: '#FF6B35' },
-  actionBtnPrimaryText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
-  actionBtnSecondary: { backgroundColor: '#1A1A1A' },
-  actionBtnSecondaryText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+  saveBtnText: { color: T.ink, fontSize: 14, fontWeight: '700' },
+  shareBtn: {
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    shadowColor: T.accent,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  shareBtnHighlight: {
+    position: 'absolute',
+    top: 2,
+    left: '10%',
+    right: '10%',
+    height: '38%',
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.4)',
+  },
+  shareBtnText: {
+    fontFamily: 'Anton_400Regular',
+    fontSize: 16,
+    letterSpacing: 1.2,
+    color: '#FFF',
+  },
 })

@@ -1,18 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
+  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  KeyboardAvoidingView, Platform,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { LinearGradient } from 'expo-linear-gradient'
 import * as Haptics from 'expo-haptics'
 import { useRouter } from 'expo-router'
-import ConsentModal from '../components/ConsentModal'
-import { getConsent, setConsent } from '../lib/consent'
+import { T } from '../lib/theme'
 
 const MAX_CHARS = 500
 
@@ -23,176 +18,213 @@ function uuid(): string {
   })
 }
 
+function GemDot({ color }: { color: string }) {
+  return <View style={[styles.gem, { backgroundColor: color }]} />
+}
+
+function LipglossButton({
+  label, onPress, disabled,
+}: { label: string; onPress: () => void; disabled?: boolean }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.85}
+      style={{ width: '100%' }}
+    >
+      <LinearGradient
+        colors={
+          disabled
+            ? ['#3A1040', '#2A0C30', '#1E0824']
+            : ['#FF8FC2', '#FF2EC4', '#B8156A']
+        }
+        style={styles.lipBtn}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+      >
+        <View style={styles.lipBtnHighlight} />
+        <Text style={[styles.lipBtnText, disabled && styles.lipBtnTextDisabled]}>
+          {label}
+        </Text>
+      </LinearGradient>
+    </TouchableOpacity>
+  )
+}
+
 export default function HomeScreen() {
   const router = useRouter()
   const [complaint, setComplaint] = useState('')
-  const [consentGiven, setConsentGiven] = useState(false)
-  const [showConsent, setShowConsent] = useState(false)
-  const [consentChecked, setConsentChecked] = useState(false)
-
-  useEffect(() => {
-    getConsent().then((val) => {
-      setConsentGiven(val)
-      setConsentChecked(true)
-    })
-  }, [])
-
-  const handleGenerate = useCallback(async () => {
-    if (complaint.trim().length < 3) return
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-
-    if (!consentChecked) return
-
-    if (!consentGiven) {
-      setShowConsent(true)
-      return
-    }
-
-    const sessionId = uuid()
-    router.push({
-      pathname: '/generating',
-      params: { complaint: complaint.trim(), sessionId, consentGiven: 'true' },
-    })
-  }, [complaint, consentGiven, consentChecked, router])
-
-  const handleAccept = async () => {
-    await setConsent(true)
-    setConsentGiven(true)
-    setShowConsent(false)
-    const sessionId = uuid()
-    router.push({
-      pathname: '/generating',
-      params: { complaint: complaint.trim(), sessionId, consentGiven: 'true' },
-    })
-  }
-
-  const handleDecline = async () => {
-    await setConsent(false)
-    setConsentGiven(false)
-    setShowConsent(false)
-    const sessionId = uuid()
-    router.push({
-      pathname: '/generating',
-      params: { complaint: complaint.trim(), sessionId, consentGiven: 'false' },
-    })
-  }
-
   const canSubmit = complaint.trim().length >= 3
 
+  const handleGenerate = useCallback(async () => {
+    if (!canSubmit) return
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    const sessionId = uuid()
+    router.push({ pathname: '/feed', params: { complaint: complaint.trim(), sessionId } })
+  }, [complaint, canSubmit, router])
+
   return (
-    <KeyboardAvoidingView
+    <LinearGradient
+      colors={['#4A0E5B', '#1A0824', '#0B0410']}
       style={styles.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      start={{ x: 0.5, y: 0 }}
+      end={{ x: 0.5, y: 1 }}
     >
-      <ScrollView
-        contentContainerStyle={styles.inner}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.hero}>
-          <Text style={styles.emoji}>😤</Text>
-          <Text style={styles.headline}>What's your problem?</Text>
-          <Text style={styles.sub}>Tell us what's annoying you. We'll turn it into a meme.</Text>
-        </View>
-
-        <View style={styles.inputWrapper}>
-          <TextInput
-            style={styles.input}
-            placeholder="My neighbour's dog barks at 6am every single morning…"
-            placeholderTextColor="#555"
-            multiline
-            maxLength={MAX_CHARS}
-            value={complaint}
-            onChangeText={setComplaint}
-            textAlignVertical="top"
-            returnKeyType="done"
-          />
-          <Text style={styles.charCount}>
-            {complaint.length}/{MAX_CHARS}
-          </Text>
-        </View>
-
-        <TouchableOpacity
-          style={[styles.button, !canSubmit && styles.buttonDisabled]}
-          onPress={handleGenerate}
-          disabled={!canSubmit}
-          activeOpacity={0.8}
+      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
+        <KeyboardAvoidingView
+          style={styles.kav}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={0}
         >
-          <Text style={styles.buttonText}>Make My Memes 🔥</Text>
-        </TouchableOpacity>
-      </ScrollView>
+          <View style={styles.inner}>
 
-      <ConsentModal
-        visible={showConsent}
-        onAccept={handleAccept}
-        onDecline={handleDecline}
-      />
-    </KeyboardAvoidingView>
+            {/* Top: eyebrow + headline */}
+            <View style={styles.top}>
+              <View style={styles.eyebrowRow}>
+                <Text style={styles.eyebrow}>WYP?</Text>
+                <View style={styles.gemRow}>
+                  <GemDot color={T.accent} />
+                  <GemDot color={T.accent2} />
+                  <GemDot color={T.accent} />
+                </View>
+              </View>
+
+              <Text style={styles.headline}>
+                {'Right\nbabe.\n'}<Text style={styles.headlineAccent}>What's the{'\n'}problem?</Text>
+              </Text>
+            </View>
+
+            {/* Spacer — pushes input + CTA to the bottom */}
+            <View style={styles.spacer} />
+
+            {/* Bottom: input then CTA */}
+            <View style={styles.inputCard}>
+              <TextInput
+                style={styles.input}
+                placeholder="My neighbour plays drum and bass at 3am on a Tuesday…"
+                placeholderTextColor={T.inkSoft}
+                multiline
+                maxLength={MAX_CHARS}
+                value={complaint}
+                onChangeText={setComplaint}
+                textAlignVertical="top"
+              />
+              <Text style={styles.charCount}>{complaint.length}/{MAX_CHARS}</Text>
+            </View>
+
+            <LipglossButton
+              label={canSubmit ? 'SHOW ME THE MEMES →' : 'SPILL THE TEA →'}
+              onPress={handleGenerate}
+              disabled={!canSubmit}
+            />
+
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </LinearGradient>
   )
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#0D0D0D',
-  },
+  root: { flex: 1 },
+  safe: { flex: 1 },
+  kav: { flex: 1 },
   inner: {
-    flexGrow: 1,
-    padding: 24,
-    justifyContent: 'center',
+    flex: 1,
+    paddingHorizontal: 22,
+    paddingTop: 24,
+    paddingBottom: 20,
   },
-  hero: {
+
+  top: {},
+
+  eyebrowRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 24,
   },
-  emoji: {
-    fontSize: 56,
-    marginBottom: 12,
+  eyebrow: {
+    fontFamily: 'Courier New',
+    fontSize: 11,
+    letterSpacing: 2.5,
+    color: T.inkSoft,
   },
+  gemRow: { flexDirection: 'row', gap: 6 },
+  gem: { width: 9, height: 9, borderRadius: 5 },
+
   headline: {
-    color: '#FFFFFF',
-    fontSize: 28,
-    fontWeight: '800',
-    textAlign: 'center',
-    marginBottom: 8,
+    fontFamily: 'Anton_400Regular',
+    fontSize: 52,
+    lineHeight: 66,
+    color: T.ink,
+    letterSpacing: -0.5,
+    textShadowColor: T.accent,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 18,
   },
-  sub: {
-    color: '#888',
-    fontSize: 15,
-    textAlign: 'center',
-    lineHeight: 22,
+  headlineAccent: {
+    color: T.accent,
   },
-  inputWrapper: {
-    backgroundColor: '#1A1A1A',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
+
+  inputCard: {
+    backgroundColor: T.surface,
+    borderRadius: T.radius.gloss,
+    padding: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: T.border,
+    ...T.shadow.gloss,
   },
   input: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    lineHeight: 24,
-    minHeight: 120,
-    maxHeight: 200,
+    fontSize: 17,
+    color: T.ink,
+    minHeight: 100,
+    lineHeight: 26,
   },
   charCount: {
-    color: '#555',
-    fontSize: 12,
+    color: T.inkSoft,
+    fontSize: 11,
     textAlign: 'right',
     marginTop: 8,
+    fontFamily: 'Courier New',
   },
-  button: {
-    backgroundColor: '#FF6B35',
-    borderRadius: 16,
-    paddingVertical: 18,
+
+  spacer: { flex: 1, minHeight: 24 },
+
+  lipBtn: {
+    height: 62,
+    borderRadius: 31,
     alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    shadowColor: T.accent,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 10,
   },
-  buttonDisabled: {
-    opacity: 0.4,
+  lipBtnHighlight: {
+    position: 'absolute',
+    top: 3,
+    left: '8%',
+    right: '8%',
+    height: '38%',
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.4)',
   },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '800',
+  lipBtnText: {
+    fontFamily: 'Anton_400Regular',
+    fontSize: 17,
+    letterSpacing: 1.5,
+    color: '#FFF',
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  lipBtnTextDisabled: {
+    color: 'rgba(255,255,255,0.4)',
   },
 })
