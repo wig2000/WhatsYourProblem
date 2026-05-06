@@ -12,9 +12,10 @@ export function getDb(): NeonQueryFunction<false, false> {
   return _sql
 }
 
-// Convenience proxy — behaves like the tagged-template sql`` but initialises lazily
+// Proxy target must be a function — tagged template literals require a callable target.
+// Using {} as target causes "TypeError: sql is not a function" at runtime.
 export const sql: NeonQueryFunction<false, false> = new Proxy(
-  {} as NeonQueryFunction<false, false>,
+  function () {} as unknown as NeonQueryFunction<false, false>,
   {
     apply(_target, _thisArg, args) {
       return (getDb() as unknown as (...a: unknown[]) => unknown)(...args)

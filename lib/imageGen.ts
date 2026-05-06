@@ -34,7 +34,6 @@ export async function generateSurrealImage(prompt: string): Promise<ImageGenResu
     prompt: `${prompt}. No text, no words, no captions in the image.`,
     n: 1,
     size: '1024x1024',
-    response_format: 'b64_json',
   })
 
   const usage = (response as unknown as { usage?: { input_tokens?: number; output_tokens?: number } }).usage
@@ -45,11 +44,22 @@ export async function generateSurrealImage(prompt: string): Promise<ImageGenResu
     prompt: prompt.slice(0, 80),
   })
 
-  const b64 = response.data?.[0]?.b64_json
-  if (!b64) throw new Error('gpt-image-2 returned no image data')
+  const item = response.data?.[0]
+  if (!item) throw new Error('gpt-image-2 returned no image data')
+
+  let buffer: Buffer
+  if (item.b64_json) {
+    buffer = Buffer.from(item.b64_json, 'base64')
+  } else if (item.url) {
+    const res = await fetch(item.url)
+    if (!res.ok) throw new Error(`Failed to fetch gpt-image-2 image: ${res.status}`)
+    buffer = Buffer.from(await res.arrayBuffer())
+  } else {
+    throw new Error('gpt-image-2 returned neither b64_json nor url')
+  }
 
   return {
-    buffer: Buffer.from(b64, 'base64'),
+    buffer,
     model: 'gpt-image-2',
     inputTokens: usage?.input_tokens,
     outputTokens: usage?.output_tokens,
@@ -89,7 +99,7 @@ export async function generateRealisticImage(prompt: string): Promise<ImageGenRe
 
 export async function generateIllustrationImage(prompt: string): Promise<ImageGenResult> {
   ensureFal()
-  const result = await fal.subscribe('fal-ai/flux2/pro', {
+  const result = await fal.subscribe('fal-ai/flux-pro/v1.1', {
     input: {
       prompt: `${prompt}. Flat illustration style, clean lines, minimal background. No text, no words in the image.`,
       image_size: 'square_hd',
@@ -110,6 +120,6 @@ export async function generateIllustrationImage(prompt: string): Promise<ImageGe
 
   return {
     buffer,
-    model: 'fal-ai/flux2/pro',
+    model: 'fal-ai/flux-pro/v1.1',
   }
 }
