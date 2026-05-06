@@ -1,39 +1,22 @@
 import { API_URL } from './api'
 import type { SSEEvent } from './types'
 
-export async function streamGenerate(
+export function streamGenerate(
   complaint: string,
   sessionId: string,
   consentGiven: boolean,
   onEvent: (event: SSEEvent) => void,
   signal: AbortSignal
 ): Promise<void> {
-  const response = await fetch(`${API_URL}/api/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ complaint, sessionId, consentGiven }),
-    signal,
-  })
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${API_URL}/api/generate`)
+    xhr.setRequestHeader('Content-Type', 'application/json')
 
-  if (!response.ok) {
-    throw new Error(`Generation request failed: ${response.status}`)
-  }
+    let cursor = 0
 
-  const reader = response.body?.getReader()
-  if (!reader) throw new Error('No response body')
-
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
-
+    function parseChunk(chunk: string) {
+      const lines = chunk.split('\n')
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue
         const json = line.slice(6).trim()
@@ -42,11 +25,35 @@ export async function streamGenerate(
           const event = JSON.parse(json) as SSEEvent
           onEvent(event)
         } catch {
-          // malformed SSE line — skip
+          // malformed line — skip
         }
       }
     }
-  } finally {
-    reader.releaseLock()
-  }
+
+    xhr.onprogress = () => {
+      const newText = xhr.responseText.slice(cursor)
+      cursor = xhr.responseText.length
+      parseChunk(newText)
+    }
+
+    xhr.onload = () => {
+      // parse any final chunk not caught by onprogress
+      const remaining = xhr.responseText.slice(cursor)
+      if (remaining) parseChunk(remaining)
+      resolve()
+    }
+
+    xhr.onerror = () => reject(new Error(`Request failed: ${xhr.status}`))
+    xhr.ontimeout = () => reject(new Error('Request timed out'))
+    xhr.timeout = 120_000
+
+    signal.addEventListener('abort', () => {
+      xhr.abort()
+      const err = new Error('Aborted')
+      err.name = 'AbortError'
+      reject(err)
+    })
+
+    xhr.send(JSON.stringify({ complaint, sessionId, consentGiven }))
+  })
 }

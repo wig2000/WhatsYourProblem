@@ -11,7 +11,7 @@ import { streamGenerate } from '../lib/sse'
 import MemeCard from '../components/MemeCard'
 import type { GeneratedMeme, MemeStyle, ParsedComplaint } from '../lib/types'
 
-const SLOT_ORDER: MemeStyle[] = ['text-only', 'template', 'surreal', 'realistic', 'illustration']
+const SLOT_ORDER: MemeStyle[] = ['surreal', 'realistic', 'template', 'illustration', 'text-only']
 
 export default function GeneratingScreen() {
   const { complaint, sessionId, consentGiven } = useLocalSearchParams<{

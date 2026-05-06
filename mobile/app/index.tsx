@@ -16,6 +16,13 @@ import { getConsent, setConsent } from '../lib/consent'
 
 const MAX_CHARS = 500
 
+function uuid(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16)
+  })
+}
+
 export default function HomeScreen() {
   const router = useRouter()
   const [complaint, setComplaint] = useState('')
@@ -41,7 +48,7 @@ export default function HomeScreen() {
       return
     }
 
-    const sessionId = `mobile_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const sessionId = uuid()
     router.push({
       pathname: '/generating',
       params: { complaint: complaint.trim(), sessionId, consentGiven: 'true' },
@@ -52,7 +59,7 @@ export default function HomeScreen() {
     await setConsent(true)
     setConsentGiven(true)
     setShowConsent(false)
-    const sessionId = `mobile_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const sessionId = uuid()
     router.push({
       pathname: '/generating',
       params: { complaint: complaint.trim(), sessionId, consentGiven: 'true' },
@@ -63,7 +70,7 @@ export default function HomeScreen() {
     await setConsent(false)
     setConsentGiven(false)
     setShowConsent(false)
-    const sessionId = `mobile_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const sessionId = uuid()
     router.push({
       pathname: '/generating',
       params: { complaint: complaint.trim(), sessionId, consentGiven: 'false' },

@@ -170,13 +170,10 @@ export async function POST(req: NextRequest) {
           send(controller, { type: 'meme', index, data: meme })
         }
 
-        // Fire text-only + template first, then all three image calls in parallel
+        // All 5 tasks fire simultaneously — fast ones (text, template) resolve first
         await Promise.allSettled([
           textOnlyTask(),
           templateTask(),
-        ])
-
-        await Promise.allSettled([
           generatedTask(surrealBrief, 0, generateSurrealImage).catch((err) => {
             console.error('[surreal] failed:', err)
             send(controller, { type: 'error', data: { message: 'Surreal image failed', index: 0 } })
