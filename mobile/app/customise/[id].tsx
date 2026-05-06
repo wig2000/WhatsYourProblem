@@ -35,7 +35,8 @@ export default function CustomiseScreen() {
   const [colour, setColour] = useState<ColourChoice>('white-stroke')
   const [placement, setPlacement] = useState<GridPosition>(9)
   const [compositeUrl, setCompositeUrl] = useState(url)
-  const [currentMemeId, setCurrentMemeId] = useState(id)
+  const [shareMemeId, setShareMemeId] = useState(id)   // latest version — for sharing
+  const originalMemeId = id                             // never changes — always composite from base
   const [isCompositing, setIsCompositing] = useState(false)
   const [isSuggesting, setIsSuggesting] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -43,31 +44,32 @@ export default function CustomiseScreen() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const recomposite = useCallback(async (
-    f: FontChoice, c: ColourChoice, p: GridPosition, cap: string, mid: string
+    f: FontChoice, c: ColourChoice, p: GridPosition, cap: string
   ) => {
     setIsCompositing(true)
     try {
       const res = await fetch(`${API_URL}/api/composite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memeId: mid, font: f, colour: c, placement: p, captionText: cap }),
+        // Always use the original meme ID so we always composite from the clean base image
+        body: JSON.stringify({ memeId: originalMemeId, font: f, colour: c, placement: p, captionText: cap }),
       })
       if (!res.ok) throw new Error('Composite failed')
       const data = await res.json() as { compositeUrl: string; memeId: string }
       setCompositeUrl(data.compositeUrl)
-      setCurrentMemeId(data.memeId)
+      setShareMemeId(data.memeId)
     } catch (err) {
       console.error('[recomposite]', err)
     } finally {
       setIsCompositing(false)
     }
-  }, [])
+  }, [originalMemeId])
 
   // Debounce recomposite on any param change
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
-      recomposite(font, colour, placement, caption, currentMemeId)
+      recomposite(font, colour, placement, caption)
     }, 600)
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -80,7 +82,7 @@ export default function CustomiseScreen() {
       const res = await fetch(`${API_URL}/api/suggest-caption`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memeId: currentMemeId, currentCaption: caption }),
+        body: JSON.stringify({ memeId: originalMemeId, currentCaption: caption }),
       })
       if (!res.ok) throw new Error('Suggestion failed')
       const data = await res.json() as { caption: string }
@@ -100,7 +102,7 @@ export default function CustomiseScreen() {
         Alert.alert('Permission required', 'Allow photo library access to save memes.')
         return
       }
-      const localUri = FileSystem.cacheDirectory + `meme_save_${currentMemeId}.webp`
+      const localUri = FileSystem.cacheDirectory + `meme_save_${shareMemeId}.webp`
       await FileSystem.downloadAsync(compositeUrl, localUri)
       await MediaLibrary.saveToLibraryAsync(localUri)
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
@@ -116,10 +118,10 @@ export default function CustomiseScreen() {
     setIsSharing(true)
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     try {
-      await shareToFinal(currentMemeId)
+      await shareToFinal(shareMemeId)
       const available = await Sharing.isAvailableAsync()
       if (available) {
-        const localUri = FileSystem.cacheDirectory + `meme_share_${currentMemeId}.webp`
+        const localUri = FileSystem.cacheDirectory + `meme_share_${shareMemeId}.webp`
         await FileSystem.downloadAsync(compositeUrl, localUri)
         await Sharing.shareAsync(localUri, { mimeType: 'image/webp', dialogTitle: "Share your meme" })
       }
