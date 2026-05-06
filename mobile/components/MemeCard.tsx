@@ -28,7 +28,7 @@ export default function MemeCard({ meme, style, loading, fullWidth }: Props) {
     <TouchableOpacity
       style={[styles.card, { width: size, height: size }]}
       disabled={!meme}
-      onPress={() => meme && router.push({ pathname: '/meme/[id]', params: { id: meme.id, url: meme.compositeUrl } })}
+      onPress={() => meme && router.push({ pathname: '/meme/[id]', params: { id: meme.id, url: meme.compositeUrl, caption: meme.captionText, style: meme.style } })}
       activeOpacity={0.85}
     >
       {meme ? (

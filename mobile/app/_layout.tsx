@@ -20,6 +20,7 @@ export default function RootLayout() {
           options={{ title: 'Generating Memes…', headerBackVisible: false }}
         />
         <Stack.Screen name="meme/[id]" options={{ title: 'Your Meme' }} />
+        <Stack.Screen name="customise/[id]" options={{ title: 'Customise' }} />
       </Stack>
     </>
   )
