@@ -25,7 +25,7 @@ export type ComplaintCategory =
 // 1=top-left … 5=centre … 9=bottom-right (reading order)
 export type GridPosition = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
-export type FontChoice = 'bebas' | 'inter-bold' | 'caveat' | 'inter'
+export type FontChoice = 'bebas' | 'bangers' | 'marker' | 'oswald'
 
 export type ColourChoice =
   | 'white-stroke'
@@ -91,6 +91,7 @@ export interface GeneratedMeme {
 export type SSEEvent =
   | { type: 'parsed'; data: ParsedComplaint }
   | { type: 'meme'; index: number; data: GeneratedMeme }
+  | { type: 'brief'; data: MemeBrief }           // surreal brief — client generates on demand
   | { type: 'complete'; data: { sessionId: string } }
   | { type: 'error'; data: { message: string; index?: number } }
 

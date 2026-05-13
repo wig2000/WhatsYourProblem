@@ -118,10 +118,16 @@ export async function POST(req: NextRequest) {
 
         // Template (index 2) — fast (template image fetch + Sharp)
         const templateBrief = briefs.find(b => b.style === 'template') ?? briefs[2]
+        console.log('[template] brief from LLM:', JSON.stringify({
+          templateId: templateBrief.templateId,
+          topText: templateBrief.topText,
+          bottomText: templateBrief.bottomText,
+        }))
         const templateTask = async () => {
           const tid = templateBrief.templateId ?? 'drake'
           const top = templateBrief.topText ?? parsed.premise
           const bottom = templateBrief.bottomText ?? templateBrief.captionText
+          console.log('[template] using tid:', tid)
           const buf = await compositeTemplateMeme(tid, top, bottom, {
             ...defaultParams,
             captionText: bottom,
@@ -178,14 +184,14 @@ export async function POST(req: NextRequest) {
           send({ type: 'meme', index, data: meme })
         }
 
-        // All 5 tasks fire simultaneously — fast ones (text, template) resolve first
+        // Surreal is expensive (~$0.06–0.08, ~90s) — emit brief only so the
+        // client can generate it on demand (after a rewarded ad).
+        send({ type: 'brief', data: surrealBrief })
+
+        // The other 4 tasks fire simultaneously — fast ones resolve first
         await Promise.allSettled([
           textOnlyTask(),
           templateTask(),
-          generatedTask(surrealBrief, 0, generateSurrealImage).catch((err) => {
-            console.error('[surreal] failed:', err)
-            send({ type: 'error', data: { message: 'Surreal image failed', index: 0 } })
-          }),
           generatedTask(realisticBrief, 1, generateRealisticImage).catch((err) => {
             console.error('[realistic] failed:', err)
             send({ type: 'error', data: { message: 'Realistic image failed', index: 1 } })

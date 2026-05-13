@@ -108,6 +108,8 @@ export default function HomeScreen() {
                 value={complaint}
                 onChangeText={setComplaint}
                 textAlignVertical="top"
+                returnKeyType="done"
+                blurOnSubmit={true}
               />
               <Text style={styles.charCount}>{complaint.length}/{MAX_CHARS}</Text>
             </View>

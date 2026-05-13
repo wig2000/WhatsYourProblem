@@ -1,5 +1,5 @@
 export type MemeStyle = 'surreal' | 'realistic' | 'illustration' | 'template' | 'text-only'
-export type FontChoice = 'bebas' | 'inter-bold' | 'caveat' | 'inter'
+export type FontChoice = 'bebas' | 'bangers' | 'marker' | 'oswald'
 export type ColourChoice = 'white-stroke' | 'black' | 'yellow' | 'red' | 'teal' | 'purple'
 export type GridPosition = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
@@ -34,14 +34,15 @@ export interface ParsedComplaint {
 export type SSEEvent =
   | { type: 'parsed'; data: ParsedComplaint }
   | { type: 'meme'; index: number; data: GeneratedMeme }
+  | { type: 'brief'; data: MemeBrief }           // surreal brief — unlocked on demand
   | { type: 'error'; data: { message: string; index?: number } }
   | { type: 'complete'; data: { sessionId: string } }
 
 export const FONT_LABELS: Record<FontChoice, string> = {
-  bebas: 'Classic',
-  'inter-bold': 'Bold',
-  caveat: 'Handwritten',
-  inter: 'Clean',
+  bebas:   'Block',
+  bangers: 'Comic',
+  marker:  'Marker',
+  oswald:  'Bold',
 }
 
 export const COLOUR_HEX: Record<ColourChoice, { fill: string; stroke: string }> = {

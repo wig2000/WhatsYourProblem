@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['sharp'],
+  serverExternalPackages: ['sharp', '@resvg/resvg-js'],
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '*.supabase.co' },

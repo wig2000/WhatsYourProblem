@@ -66,12 +66,13 @@ export async function generateSurrealImage(prompt: string): Promise<ImageGenResu
   }
 }
 
-// ─── Realistic brief → Imagen 4 Ultra ────────────────────────────────────────
-// Flat per-image pricing (~$0.06). No token tracking needed.
+// ─── Realistic brief → Imagen 4 Fast ─────────────────────────────────────────
+// ~3× faster than Ultra, $0.02/image vs $0.06. Quality difference negligible
+// for meme use cases. Switch back to ultra-generate-001 for higher fidelity.
 
 export async function generateRealisticImage(prompt: string): Promise<ImageGenResult> {
   const response = await googleAIClient().models.generateImages({
-    model: 'imagen-4.0-ultra-generate-001',
+    model: 'imagen-4.0-fast-generate-001',
     prompt: `${prompt}. Photorealistic. No text, no words, no captions in the image.`,
     config: {
       numberOfImages: 1,
@@ -85,41 +86,43 @@ export async function generateRealisticImage(prompt: string): Promise<ImageGenRe
 
   const buffer = Buffer.from(imageBytes, 'base64')
 
-  console.log('[imagen-4-ultra] generated image, ~$0.06')
+  console.log('[imagen-4-fast] generated image, ~$0.02')
 
   return {
     buffer,
-    model: 'imagen-4.0-ultra-generate-001',
-    costCents: 6,
+    model: 'imagen-4.0-fast-generate-001',
+    costCents: 2,
   }
 }
 
-// ─── Illustration/cartoon brief → Flux 2 Pro via fal.ai ─────────────────────
-// Flat per-image pricing. Best stylistic control for flat aesthetics.
+// ─── Illustration/cartoon brief → Flux Schnell via fal.ai ───────────────────
+// ~3-5s generation. Flux's own fast model — much cleaner illustration output
+// than SDXL Turbo while staying in the same speed bracket.
+// Switch to fal-ai/flux-pro/v1.1 for maximum fidelity if speed isn't a concern.
 
 export async function generateIllustrationImage(prompt: string): Promise<ImageGenResult> {
   ensureFal()
-  const result = await fal.subscribe('fal-ai/flux-pro/v1.1', {
+  const result = await fal.subscribe('fal-ai/flux/schnell', {
     input: {
       prompt: `${prompt}. Flat illustration style, clean lines, minimal background. No text, no words in the image.`,
       image_size: 'square_hd',
       num_images: 1,
-      // num_inference_steps not in v1.1 type — omitted
+      num_inference_steps: 4,
     },
   })
 
   const data = result.data as { images?: { url: string }[] }
   const imageUrl = data.images?.[0]?.url
-  if (!imageUrl) throw new Error('Flux 2 Pro returned no image URL')
+  if (!imageUrl) throw new Error('Flux Schnell returned no image URL')
 
   const imageResponse = await fetch(imageUrl)
-  if (!imageResponse.ok) throw new Error(`Failed to fetch Flux image: ${imageResponse.status}`)
+  if (!imageResponse.ok) throw new Error(`Failed to fetch Flux Schnell image: ${imageResponse.status}`)
   const buffer = Buffer.from(await imageResponse.arrayBuffer())
 
-  console.log('[flux2-pro] generated image from fal.ai')
+  console.log('[flux-schnell] generated image from fal.ai')
 
   return {
     buffer,
-    model: 'fal-ai/flux-pro/v1.1',
+    model: 'fal-ai/flux/schnell',
   }
 }

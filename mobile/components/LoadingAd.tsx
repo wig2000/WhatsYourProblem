@@ -1,62 +1,98 @@
 // ─── LoadingAd — full-screen overlay shown while memes generate ──────────────
-// Memes load immediately in the background.
-// This overlay appears for up to AD_DURATION seconds.
-// Skip button appears after SKIP_DELAY seconds.
-// Auto-dismisses when timer hits zero.
+// Strategy:
+//   1. Show a "loading…" overlay immediately (memes are building in background)
+//   2. Kick off a RewardedInterstitialAd request simultaneously
+//   3. As soon as the ad is ready (~1–3s), call .show() — it takes over fullscreen
+//   4. When the ad is dismissed (watched or skipped), call onDismiss to reveal the feed
+//   5. Fallback: if the ad fails to load or takes >8s, dismiss the overlay anyway
 
-import { useState, useEffect, useRef } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, Modal, Animated } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { View, Text, StyleSheet, Modal, ActivityIndicator } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
+// react-native-google-mobile-ads requires a custom native build (EAS / bare workflow).
+// It is NOT available in Expo Go. We lazy-require it inside the effect so the module
+// is never imported unless adsEnabled() is true AND the native binary is present.
 import { T } from '../lib/theme'
-import { adsEnabled } from '../lib/ads'
+import { adsEnabled, isPersonalizedAdsAllowed, AD_UNITS } from '../lib/ads'
 
-const AD_DURATION  = 5   // seconds before auto-dismiss
-const SKIP_DELAY   = 3   // seconds before skip button appears
+// Hard cap: dismiss after this many ms even if the ad never loaded
+const FALLBACK_MS = 8_000
 
 interface Props {
   onDismiss: () => void
 }
 
 export function LoadingAd({ onDismiss }: Props) {
-  const [visible,    setVisible]    = useState(true)
-  const [canSkip,    setCanSkip]    = useState(false)
-  const [remaining,  setRemaining]  = useState(AD_DURATION)
-  const progressAnim = useRef(new Animated.Value(1)).current
+  const [visible, setVisible] = useState(true)
+  const dismissedRef = useRef(false)
 
+  // Idempotent dismiss — safe to call from multiple listeners
   const dismiss = () => {
+    if (dismissedRef.current) return
+    dismissedRef.current = true
     setVisible(false)
     onDismiss()
   }
 
   useEffect(() => {
-    if (!adsEnabled()) { onDismiss(); return }
+    // Ads disabled → skip straight to feed (also covers Expo Go dev mode)
+    if (!adsEnabled()) {
+      dismiss()
+      return
+    }
 
-    // Animate progress bar left→right
-    Animated.timing(progressAnim, {
-      toValue: 0,
-      duration: AD_DURATION * 1000,
-      useNativeDriver: false,
-    }).start()
+    // Lazy require: only executed when adsEnabled() is true.
+    // Catches TurboModuleRegistry errors if the native binary isn't present.
+    let RewardedInterstitialAd: any, AdEventType: any, RewardedAdEventType: any
+    try {
+      const mod = require('react-native-google-mobile-ads')
+      RewardedInterstitialAd = mod.RewardedInterstitialAd
+      AdEventType           = mod.AdEventType
+      RewardedAdEventType   = mod.RewardedAdEventType
+    } catch {
+      // Native module not available (Expo Go, simulator without custom build)
+      dismiss()
+      return
+    }
 
-    const skipTimer  = setTimeout(() => setCanSkip(true),    SKIP_DELAY   * 1000)
-    const autoTimer  = setTimeout(() => dismiss(),            AD_DURATION  * 1000)
-    const countTimer = setInterval(() =>
-      setRemaining(r => Math.max(0, r - 1)), 1000)
+    const ad = RewardedInterstitialAd.createForAdRequest(
+      AD_UNITS.rewardedInterstitial,
+      { requestNonPersonalizedAdsOnly: !isPersonalizedAdsAllowed() }
+    )
+
+    const fallback = setTimeout(dismiss, FALLBACK_MS)
+
+    const unsubLoaded = ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
+      clearTimeout(fallback)
+      // Show the video ad — it takes over the screen natively
+      ad.show().catch(dismiss)
+    })
+
+    // User finished watching or dismissed the ad
+    const unsubClosed = ad.addAdEventListener(AdEventType.CLOSED, () => {
+      clearTimeout(fallback)
+      dismiss()
+    })
+
+    // Network error / no fill / unit not configured
+    const unsubError = ad.addAdEventListener(AdEventType.ERROR, () => {
+      clearTimeout(fallback)
+      dismiss()
+    })
+
+    ad.load()
 
     return () => {
-      clearTimeout(skipTimer)
-      clearTimeout(autoTimer)
-      clearInterval(countTimer)
+      clearTimeout(fallback)
+      unsubLoaded()
+      unsubClosed()
+      unsubError()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Nothing to render when ads are off or already dismissed
   if (!adsEnabled() || !visible) return null
-
-  const barWidth = progressAnim.interpolate({
-    inputRange:  [0, 1],
-    outputRange: ['0%', '100%'],
-  })
 
   return (
     <Modal transparent animationType="fade" visible={visible} statusBarTranslucent>
@@ -66,41 +102,9 @@ export function LoadingAd({ onDismiss }: Props) {
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
       >
-        {/* Progress bar — drains while ad plays */}
-        <View style={styles.progressTrack}>
-          <Animated.View style={[styles.progressBar, { width: barWidth }]} />
-        </View>
-
-        {/* Ad content */}
-        <View style={styles.adArea}>
-          <Text style={styles.sponsoredLabel}>SPONSORED</Text>
-
-          {/* ── Replace with real AdMob unit when configured ─────────────── */}
-          <View style={styles.adPlaceholder}>
-            <Text style={styles.adPlaceholderText}>Ad</Text>
-          </View>
-          {/*
-          <BannerAd
-            unitId={AD_UNITS.banner}
-            size={BannerAdSize.LEADERBOARD}
-            requestOptions={{ requestNonPersonalizedAdsOnly: false }}
-          />
-          */}
-        </View>
-
-        {/* Footer — loading message + skip/countdown */}
-        <View style={styles.footer}>
-          <Text style={styles.loadingText}>your memes are loading…</Text>
-          {canSkip ? (
-            <TouchableOpacity onPress={dismiss} style={styles.skipBtn} activeOpacity={0.75}>
-              <Text style={styles.skipText}>Skip  →</Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.countdown}>
-              <Text style={styles.countdownText}>{remaining}</Text>
-            </View>
-          )}
-        </View>
+        <ActivityIndicator size="large" color={T.accent} style={styles.spinner} />
+        <Text style={styles.loadingText}>your memes are loading…</Text>
+        <Text style={styles.subText}>a quick message from our sponsor</Text>
       </LinearGradient>
     </Modal>
   )
@@ -109,91 +113,24 @@ export function LoadingAd({ onDismiss }: Props) {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 32,
-  },
-
-  progressTrack: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 3,
-    backgroundColor: 'rgba(255,46,196,0.15)',
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: T.accent,
-  },
-
-  adArea: {
-    alignItems: 'center',
-    gap: 8,
-  },
-  sponsoredLabel: {
-    fontFamily: 'Courier New',
-    fontSize: 9,
-    letterSpacing: 2,
-    color: T.inkSoft,
-    opacity: 0.5,
-    textTransform: 'uppercase',
-  },
-  adPlaceholder: {
-    width: 320,
-    height: 180,
-    borderRadius: T.radius.card,
-    backgroundColor: T.surfaceTint,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: T.border,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  adPlaceholderText: {
-    color: T.inkSoft,
-    opacity: 0.4,
-    fontFamily: 'Anton_400Regular',
-    fontSize: 14,
-    letterSpacing: 2,
-  },
-
-  footer: {
-    alignItems: 'center',
     gap: 16,
+  },
+  spinner: {
+    marginBottom: 8,
   },
   loadingText: {
     fontFamily: 'Courier New',
-    fontSize: 11,
-    letterSpacing: 1.5,
-    color: T.inkSoft,
-  },
-  skipBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: T.border,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  skipText: {
-    fontFamily: 'Anton_400Regular',
     fontSize: 13,
-    letterSpacing: 1.2,
+    letterSpacing: 1.5,
     color: T.ink,
   },
-  countdown: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: T.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  countdownText: {
-    fontFamily: 'Anton_400Regular',
-    fontSize: 16,
+  subText: {
+    fontFamily: 'Courier New',
+    fontSize: 10,
+    letterSpacing: 1,
     color: T.inkSoft,
+    opacity: 0.5,
   },
 })

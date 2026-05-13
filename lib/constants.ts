@@ -10,10 +10,10 @@ export const EMOTIONAL_REGISTERS = [
 ] as const
 
 export const FONT_LABELS: Record<FontChoice, string> = {
-  'bebas': 'Classic Meme',
-  'inter-bold': 'Bold Sans',
-  'caveat': 'Handwritten',
-  'inter': 'Modern Clean',
+  'bebas':   'Block',
+  'bangers': 'Comic',
+  'marker':  'Marker',
+  'oswald':  'Bold',
 }
 
 export const COLOUR_LABELS: Record<ColourChoice, string> = {

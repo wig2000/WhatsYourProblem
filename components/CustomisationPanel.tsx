@@ -12,7 +12,7 @@ interface Props {
   style: string
 }
 
-const FONTS: FontChoice[] = ['bebas', 'inter-bold', 'caveat', 'inter']
+const FONTS: FontChoice[] = ['bebas', 'bangers', 'marker', 'oswald']
 const COLOURS: ColourChoice[] = ['white-stroke', 'black', 'yellow', 'red', 'teal', 'purple']
 
 const GRID: GridPosition[] = [1, 2, 3, 4, 5, 6, 7, 8, 9]

@@ -10,9 +10,10 @@ import * as Haptics from 'expo-haptics'
 import * as Sharing from 'expo-sharing'
 import * as FileSystem from 'expo-file-system/legacy'
 import { streamGenerate } from '../lib/sse'
-import { shareToFinal } from '../lib/api'
+import { shareToFinal, generateSurreal } from '../lib/api'
+import { adsEnabled, showRewardedInterstitial } from '../lib/ads'
 import { T, randomLoadingLine } from '../lib/theme'
-import { adsEnabled } from '../lib/ads'
+import type { MemeBrief } from '../lib/types'
 import { LoadingAd } from '../components/LoadingAd'
 import { AdSlot } from '../components/AdSlot'
 import { PostSendAd } from '../components/PostSendAd'
@@ -197,6 +198,122 @@ const ar = StyleSheet.create({
   },
 })
 
+// ── Surreal unlock card ───────────────────────────────────────────────────────
+function SurrealUnlockCard({
+  brief, hasError, onUnlock, size,
+}: { brief: MemeBrief; hasError: boolean; onUnlock: () => void; size: number }) {
+  return (
+    <TouchableOpacity
+      onPress={onUnlock}
+      activeOpacity={0.85}
+      style={[ul.card, { width: size, height: size }]}
+    >
+      <View style={ul.inner}>
+        <Text style={ul.icon}>✦</Text>
+        <Text style={ul.headline}>AI VERSION</Text>
+        <Text style={ul.caption} numberOfLines={3}>{brief.captionText}</Text>
+        <View style={ul.btn}>
+          <Text style={ul.btnText}>
+            {hasError ? 'RETRY →' : 'GENERATE →'}
+          </Text>
+        </View>
+        {!hasError && (
+          <Text style={ul.adNote}>watch a short ad</Text>
+        )}
+        {hasError && (
+          <Text style={ul.adNote}>something went wrong — tap to retry</Text>
+        )}
+      </View>
+    </TouchableOpacity>
+  )
+}
+
+const ul = StyleSheet.create({
+  card: {
+    borderRadius: T.radius.card,
+    overflow: 'hidden',
+    backgroundColor: T.surfaceTint,
+    borderWidth: 1.5,
+    borderColor: T.accent,
+  },
+  inner: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    padding: 24,
+  },
+  icon: {
+    fontSize: 28,
+    color: T.accent,
+    textShadowColor: T.accent,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 14,
+  },
+  headline: {
+    fontFamily: 'Anton_400Regular',
+    fontSize: 22,
+    letterSpacing: 2,
+    color: T.ink,
+  },
+  caption: {
+    fontSize: 13,
+    color: T.inkSoft,
+    textAlign: 'center',
+    lineHeight: 18,
+    opacity: 0.8,
+    paddingHorizontal: 8,
+  },
+  btn: {
+    marginTop: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+    backgroundColor: T.accent,
+    shadowColor: T.accent,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 14,
+  },
+  btnText: {
+    fontFamily: 'Anton_400Regular',
+    fontSize: 15,
+    letterSpacing: 1.5,
+    color: '#FFF',
+  },
+  adNote: {
+    fontFamily: 'Courier New',
+    fontSize: 10,
+    letterSpacing: 1,
+    color: T.inkSoft,
+    opacity: 0.5,
+  },
+})
+
+// ── Surreal generating card (shown while ad plays + generation runs) ──────────
+function SurrealGeneratingCard({ size }: { size: number }) {
+  const pulse = useRef(new Animated.Value(0.25)).current
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 0.7, duration: 900, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.25, duration: 900, useNativeDriver: true }),
+      ])
+    )
+    anim.start()
+    return () => anim.stop()
+  }, [pulse])
+  return (
+    <View style={[sk.card, { width: size, height: size }]}>
+      <Animated.View style={[sk.shimmer, { opacity: pulse, backgroundColor: T.accent }]} />
+      <View style={sk.inner}>
+        <Text style={sk.label}>AI MAGIC</Text>
+        <Text style={sk.sub}>cooking the surreal version…</Text>
+      </View>
+    </View>
+  )
+}
+
 // ── Main feed screen ──────────────────────────────────────────────────────────
 export default function FeedScreen() {
   const { complaint, sessionId } = useLocalSearchParams<{
@@ -219,6 +336,9 @@ export default function FeedScreen() {
   const [savingId, setSavingId] = useState<string | null>(null)
   const [loadingAdDismissed, setLoadingAdDismissed] = useState(false)
   const [postSendAdVisible, setPostSendAdVisible] = useState(false)
+  const [surrealBrief, setSurrealBrief] = useState<MemeBrief | null>(null)
+  const [surrealUnlocking, setSurrealUnlocking] = useState(false)
+  const [surrealError, setSurrealError] = useState(false)
   const [loadingLine] = useState(randomLoadingLine)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -237,6 +357,7 @@ export default function FeedScreen() {
         if (event.type === 'meme') {
           setMemes((prev) => ({ ...prev, [event.data.style]: event.data }))
         }
+        if (event.type === 'brief') setSurrealBrief(event.data)
         if (event.type === 'complete') setDone(true)
         if (event.type === 'error' && !event.data.index) {
           setError(event.data.message)
@@ -308,6 +429,25 @@ export default function FeedScreen() {
       },
     })
   }, [router])
+
+  const handleUnlockSurreal = useCallback(async () => {
+    if (!surrealBrief || surrealUnlocking) return
+    setSurrealUnlocking(true)
+    setSurrealError(false)
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    try {
+      // Ad and generation run in parallel — ad ~30s, generation ~80-100s
+      const [meme] = await Promise.all([
+        generateSurreal(sessionId, surrealBrief),
+        showRewardedInterstitial(),
+      ])
+      setMemes((prev) => ({ ...prev, surreal: meme }))
+    } catch {
+      setSurrealError(true)
+    } finally {
+      setSurrealUnlocking(false)
+    }
+  }, [surrealBrief, surrealUnlocking, sessionId])
 
   return (
     <LinearGradient
@@ -400,24 +540,24 @@ export default function FeedScreen() {
                     </Text>
                   </View>
 
-                  {/* Card — surreal skeleton shows an ad while waiting */}
+                  {/* Card */}
                   {meme ? (
                     <Image
                       source={{ uri: meme.compositeUrl }}
                       style={[styles.image, { width: CARD_SIZE, height: CARD_SIZE }]}
                       contentFit="cover"
                     />
-                  ) : style === 'surreal' && adsEnabled() ? (
-                    // ── Placement 2: ad inside a pending tile ──────────────
-                    <View style={[sk.card, { width: CARD_SIZE, height: CARD_SIZE }]}>
-                      <View style={sk.inner}>
-                        <Text style={sk.label}>SPONSORED</Text>
-                        {/* Replace View below with BannerAd when AdMob is configured */}
-                        <View style={styles.tileAdPlaceholder}>
-                          <Text style={styles.tileAdText}>Ad</Text>
-                        </View>
-                      </View>
-                    </View>
+                  ) : style === 'surreal' && surrealBrief && !surrealUnlocking ? (
+                    // ── Surreal unlock card ────────────────────────────────
+                    <SurrealUnlockCard
+                      brief={surrealBrief}
+                      hasError={surrealError}
+                      onUnlock={handleUnlockSurreal}
+                      size={CARD_SIZE}
+                    />
+                  ) : style === 'surreal' && surrealUnlocking ? (
+                    // ── Generating skeleton ────────────────────────────────
+                    <SurrealGeneratingCard size={CARD_SIZE} />
                   ) : (
                     <SkeletonCard style={style} />
                   )}
@@ -431,6 +571,10 @@ export default function FeedScreen() {
                       onSave={() => handleSave(meme)}
                       sharing={sharingId === meme.id || savingId === meme.id}
                     />
+                  ) : style === 'surreal' && surrealUnlocking ? (
+                    <View style={styles.pendingRow}>
+                      <Text style={styles.pendingText}>ai magic loading… ~90s</Text>
+                    </View>
                   ) : (
                     <View style={styles.pendingRow}>
                       <Text style={styles.pendingText}>almost ready…</Text>

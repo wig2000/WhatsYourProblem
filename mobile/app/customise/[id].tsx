@@ -16,10 +16,12 @@ import { T } from '../../lib/theme'
 import type { FontChoice, ColourChoice, GridPosition } from '../../lib/types'
 import { FONT_LABELS, COLOUR_HEX, GRID_ARROWS } from '../../lib/types'
 
-const W = Dimensions.get('window').width
-const PREVIEW_SIZE = W - 36
+const { width: W, height: SCREEN_H } = Dimensions.get('window')
+// Cap preview so controls are always visible without scrolling on small phones
+// (iPhone SE = 667px tall; we reserve ~240px for action bar + controls)
+const PREVIEW_SIZE = Math.min(W - 36, SCREEN_H * 0.45)
 
-const FONTS: FontChoice[] = ['bebas', 'inter-bold', 'caveat', 'inter']
+const FONTS: FontChoice[] = ['bebas', 'bangers', 'marker', 'oswald']
 const COLOURS: ColourChoice[] = ['white-stroke', 'black', 'yellow', 'red', 'teal', 'purple']
 const GRID: GridPosition[] = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
